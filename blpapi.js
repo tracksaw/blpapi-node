@@ -115,6 +115,11 @@ exports.Session.prototype.request =
         return invoke.call(this.session, this.session.request,
                            uri, name, request, cid, identity, label);
     }
+exports.Session.prototype.nextEvent = {
+    function() {
+        return invoke.call(this.session, this.session.nextEvent);
+    }
+}
 
 // Local variables:
 // c-basic-offset: 4
