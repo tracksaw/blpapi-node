@@ -92,6 +92,32 @@ namespace blpapijs {
 
 namespace {
 
+#define EVENT_TO_STRING(e) \
+    case blpapi::Event::e : return String::NewFromUtf8(isolate, #e)
+
+	static inline Handle<Value>
+		eventTypeToString(Isolate *isolate, blpapi::Event::EventType et) {
+		switch (et) {
+			EVENT_TO_STRING(ADMIN);
+			EVENT_TO_STRING(SESSION_STATUS);
+			EVENT_TO_STRING(SUBSCRIPTION_STATUS);
+			EVENT_TO_STRING(REQUEST_STATUS);
+			EVENT_TO_STRING(RESPONSE);
+			EVENT_TO_STRING(PARTIAL_RESPONSE);
+			EVENT_TO_STRING(SUBSCRIPTION_DATA);
+			EVENT_TO_STRING(SERVICE_STATUS);
+			EVENT_TO_STRING(TIMEOUT);
+			EVENT_TO_STRING(AUTHORIZATION_STATUS);
+			EVENT_TO_STRING(RESOLUTION_STATUS);
+			EVENT_TO_STRING(TOPIC_STATUS);
+			EVENT_TO_STRING(TOKEN_STATUS);
+			EVENT_TO_STRING(REQUEST);
+			EVENT_TO_STRING(UNKNOWN);
+		}
+		return isolate->ThrowException(Exception::Error(
+			String::NewFromUtf8(isolate, "Invalid event type.")));
+	}
+
 static inline void
 mkdatetime(blpapi::Datetime* dt, Local<Value> val)
 {
@@ -460,6 +486,10 @@ void Session::NextEvent(const FunctionCallbackInfo<Value>& args) {
 			// Keep the lock and release once the head is retrieved
 			const blpapi::Event& ev = session->d_que.front();
 			uv_mutex_unlock(&session->d_que_mutex);
+
+			rv->ForceSet(Local<String>::New(isolate, s_event_type),
+				eventTypeToString(isolate, ev.eventType()),
+				(PropertyAttribute)(ReadOnly | DontDelete));
 
 			// Iterate over contained messages without holding lock
 			Local<Array> messages = Array::New(isolate);
@@ -1302,32 +1332,7 @@ Session::getIdentity(const FunctionCallbackInfo<Value>& args, int index)
     return identity;
 }
 
-#define EVENT_TO_STRING(e) \
-    case blpapi::Event::e : return String::NewFromUtf8(isolate, #e)
 
-static inline Handle<Value>
-eventTypeToString(Isolate *isolate, blpapi::Event::EventType et)
-{
-    switch (et) {
-        EVENT_TO_STRING(ADMIN);
-        EVENT_TO_STRING(SESSION_STATUS);
-        EVENT_TO_STRING(SUBSCRIPTION_STATUS);
-        EVENT_TO_STRING(REQUEST_STATUS);
-        EVENT_TO_STRING(RESPONSE);
-        EVENT_TO_STRING(PARTIAL_RESPONSE);
-        EVENT_TO_STRING(SUBSCRIPTION_DATA);
-        EVENT_TO_STRING(SERVICE_STATUS);
-        EVENT_TO_STRING(TIMEOUT);
-        EVENT_TO_STRING(AUTHORIZATION_STATUS);
-        EVENT_TO_STRING(RESOLUTION_STATUS);
-        EVENT_TO_STRING(TOPIC_STATUS);
-        EVENT_TO_STRING(TOKEN_STATUS);
-        EVENT_TO_STRING(REQUEST);
-        EVENT_TO_STRING(UNKNOWN);
-    }
-    return isolate->ThrowException(Exception::Error(
-                String::NewFromUtf8(isolate, "Invalid event type.")));
-}
 
 void
 Session::processMessage(Isolate *isolate,
