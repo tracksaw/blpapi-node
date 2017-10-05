@@ -52,7 +52,7 @@ On Unix this will be a symbolic link that refers to the path ../... One windows 
 > mklink /d blpapi ..\..
 ```
 
-Now ypou should see the link points to the ...\blpapi-node directory
+Now you should see the link points to the ...\blpapi-node directory
 
 ```
 > cd ....\blpapi-node
