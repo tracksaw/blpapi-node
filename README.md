@@ -1,6 +1,6 @@
 [![build status](https://secure.travis-ci.org/bloomberg/blpapi-node.svg)](http://travis-ci.org/bloomberg/blpapi-node)
-blpapi-node
-===========
+# blpapi-node
+
 
 [Bloomberg Open API] binding for [Node.js].
 
@@ -12,8 +12,7 @@ Find source code in the [Github repository].
 
 **Note:** This repository was renamed from `node-blpapi` to `blpapi-node`.
 
-Dependencies
-------------
+# Dependencies
 
 This module requires:
 
@@ -32,8 +31,42 @@ This module includes:
 [Bloomberg BLPAPI C++ SDK]: http://www.bloomberglabs.com/api/libraries/
 [B-PIPE]: http://www.bloomberg.com/enterprise/enterprise_products/data_optimization/data_feeds
 
-Installation
-------------
+# Installation
+
+Clone the repo (in the Git Bash shell):
+
+```
+$ git clone https://github.com/tracksaw/blpapi-node.git
+$ cd blpapi_node
+```
+
+## On Windows
+
+The ./examples/node_modules directory contains an entry: **blpapi**.
+
+On Unix this will be a symbolic link that refers to the path ../... One windows it will be a file containing the text '../..', which will not work. So run a windows CMD shell and do the following:
+
+```
+> cd ....\blpapi-node\examples\node_modules
+> rm blpapi
+> mklink /d blpapi ..\..
+```
+
+Now ypou should see the link points to the ...\blpapi-node directory
+
+```
+> cd ....\blpapi-node
+> dir examples\node_modules\blpapi\package.json
+   Volume in drive E is New Volume
+   Volume Serial Number is DE1E-FE0D
+
+   Directory of E:\GitHub\tracksaw\blpapi-node\examples\node_modules\blpapi
+
+  10/05/2017  08:38 AM               960 package.json
+                 1 File(s)            960 bytes
+```
+
+# Installation Continued
 
 From your project directory, run:
 
@@ -58,8 +91,7 @@ invoking `npm` by running from the command shell:
 > set npm_config_arch="ia32"
 ```
 
-Usage
------
+# Usage
 
 The module design closely follows the BLPAPI SDK design, with slight
 modifications in syntax for easier consumption in Javascript.  The SDK
@@ -80,6 +112,10 @@ responses, and options are contained within the BLPAPI API
     session.on('SessionStarted', function(m) {
         // ready for work
     });
+
+    ...
+
+    session.start();
 
 ### Opening A Subscription Service ###
 
@@ -191,8 +227,7 @@ use is to be passed to `request` and `subscribe`.
         }
     });
 
-Error Handling
---------------
+# Error Handling
 
 Exceptions thrown from the C++ SDK layer are translated into
 JavaScript exceptions with the same type name. The JavaScript
@@ -213,7 +248,40 @@ This is a list of the exception types:
 + UnknownErrorException
 + UnsupportedOperationException
 
-License
--------
+# Running the FieldSearchRequest example
+
+In Git bash shell:
+
+```
+$ cd .../blpapi-node
+$  node examples/FieldSearchRequest.js 127.0.0.1:8194 PX
+```
+
+The output should look something like:
+
+```
+PX_LAST => Last Price
+PX_BID => Bid Price
+PX_ASK => Ask Price
+PX_YEST_CLOSE => Yesterday Close Price
+PX_MID => Mid Price
+PX_CLOSE_1D => Closing Price 1 Day Ago
+PX_VOLUME => Volume
+YAS_BOND_PX => YAS Bond Price
+PX_SETTLE => Settlement Price
+PX_LOW => Low Price
+PX_HIGH => High Price
+PX_OPEN => Open Price
+PX_TO_BOOK_RATIO => Price to Book Ratio
+EQY_WEIGHTED_AVG_PX => VWAP (Vol Weighted Average Price)
+OPT_STRIKE_PX => Strike Price
+PX_ROUND_LOT_SIZE => Round Lot Size
+PX_CLOSE_DT => Date Of Last Close
+CRNCY_ADJ_PX_LAST => Currency Adjusted Last Price
+PX_CLOSE_5D => Closing Price 5 Days Ago
+PX_SETTLE_LAST_DT => Date of Last Settlement Price
+```
+
+# License
 
 MIT license. See license text in [LICENSE](https://github.com/bloomberg/blpapi-node/blob/master/LICENSE).
