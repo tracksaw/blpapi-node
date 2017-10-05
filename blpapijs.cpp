@@ -283,6 +283,7 @@ public:
     static void Resubscribe(const FunctionCallbackInfo<Value>& args);
     static void Unsubscribe(const FunctionCallbackInfo<Value>& args);
     static void Request(const FunctionCallbackInfo<Value>& args);
+    static void NextEvent(const FunctionCallbackInfo<Value>& args);
 
 private:
     Session();
@@ -318,7 +319,8 @@ private:
     static Persistent<String> s_value;
     static Persistent<String> s_class_id;
     static Persistent<String> s_data;
-    static Persistent<String> s_identity;
+	static Persistent<String> s_identity;
+	static Persistent<String> s_resultString;
 
     Isolate *d_isolate;
     blpapi::SessionOptions d_options;
@@ -344,6 +346,7 @@ Persistent<String> Session::s_value;
 Persistent<String> Session::s_class_id;
 Persistent<String> Session::s_data;
 Persistent<String> Session::s_identity;
+Persistent<String> Session::s_resultString;
 
 Session::Session(
                  const FunctionCallbackInfo<Value>& args,
@@ -403,7 +406,8 @@ Session::Initialize(Handle<Object> target)
     NODE_SET_PROTOTYPE_METHOD(t, "resubscribe", Resubscribe);
     NODE_SET_PROTOTYPE_METHOD(t, "unsubscribe", Unsubscribe);
     NODE_SET_PROTOTYPE_METHOD(t, "request", Request);
-
+    NODE_SET_PROTOTYPE_METHOD(t, "nextEvent", NextEvent);
+    
     target->Set(String::NewFromUtf8(isolate, "Session",
                                     v8::String::kInternalizedString),
                 t->GetFunction());
@@ -420,8 +424,68 @@ Session::Initialize(Handle<Object> target)
     s_value.Reset(isolate, NODE_PSYMBOL("value"));
     s_class_id.Reset(isolate, NODE_PSYMBOL("classId"));
     s_data.Reset(isolate, NODE_PSYMBOL("data"));
-    s_identity.Reset(isolate, NODE_PSYMBOL("identity"));
-#undef NODE_PSYMBOL
+	s_identity.Reset(isolate, NODE_PSYMBOL("identity"));
+	s_resultString.Reset(isolate, NODE_PSYMBOL("Result"));
+#undef Result
+}
+
+void Session::NextEvent(const FunctionCallbackInfo<Value>& args) {
+	Isolate *isolate = args.GetIsolate();
+    EscapableHandleScope scope(args.GetIsolate());
+    Session* session = ObjectWrap::Unwrap<Session>(args.This());
+
+    BLPAPI_EXCEPTION_TRY
+
+		Local<Object> rv = Object::New(isolate);
+
+		uv_mutex_lock(&session->d_que_mutex);
+		bool empty = session->d_que.empty();
+		while (empty) {
+			empty = session->d_que.empty();
+		}
+		if (empty) {
+			uv_mutex_unlock(&session->d_que_mutex);
+			rv->ForceSet(
+				Local<String>::New(isolate, s_resultString),
+				String::NewFromUtf8(isolate, "EMPTY"),
+				(PropertyAttribute)(ReadOnly | DontDelete)
+			);
+		} else {
+			rv->ForceSet(
+				Local<String>::New(isolate, s_resultString),
+				String::NewFromUtf8(isolate, "FULL"),
+				(PropertyAttribute)(ReadOnly | DontDelete)
+			);
+
+			// Keep the lock and release once the head is retrieved
+			const blpapi::Event& ev = session->d_que.front();
+			uv_mutex_unlock(&session->d_que_mutex);
+
+			// Iterate over contained messages without holding lock
+			Local<Array> messages = Array::New(isolate);
+			int messageIndex = 0;
+			blpapi::MessageIterator msgIter(ev);
+			while (msgIter.next()) {
+				const blpapi::Message& msg = msgIter.message();
+				Local<Object> data = elementToValue(isolate, msg.asElement())->ToObject();
+				messages->Set(messageIndex, data);
+				++messageIndex;
+			}
+
+			rv->ForceSet(
+				String::NewFromUtf8(isolate, "Messages"),
+				messages,
+				(PropertyAttribute)(ReadOnly | DontDelete)
+			);
+
+			uv_mutex_lock(&session->d_que_mutex);
+			session->d_que.pop_front();
+			uv_mutex_unlock(&session->d_que_mutex);
+		}
+
+		args.GetReturnValue().Set(scope.Escape(rv));
+		
+		BLPAPI_EXCEPTION_CATCH_RETURN
 }
 
 void
