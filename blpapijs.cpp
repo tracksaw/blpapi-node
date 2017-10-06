@@ -466,52 +466,76 @@ void Session::NextEvent(const FunctionCallbackInfo<Value>& args) {
 
 		uv_mutex_lock(&session->d_que_mutex);
 		bool empty = session->d_que.empty();
+		uv_mutex_unlock(&session->d_que_mutex);
 		while (empty) {
+			uv_mutex_lock(&session->d_que_mutex);
 			empty = session->d_que.empty();
+			uv_mutex_unlock(&session->d_que_mutex);
 		}
-		if (empty) {
-			uv_mutex_unlock(&session->d_que_mutex);
-			rv->ForceSet(
-				Local<String>::New(isolate, s_resultString),
-				String::NewFromUtf8(isolate, "EMPTY"),
-				(PropertyAttribute)(ReadOnly | DontDelete)
-			);
-		} else {
-			rv->ForceSet(
-				Local<String>::New(isolate, s_resultString),
-				String::NewFromUtf8(isolate, "FULL"),
-				(PropertyAttribute)(ReadOnly | DontDelete)
-			);
 
-			// Keep the lock and release once the head is retrieved
-			const blpapi::Event& ev = session->d_que.front();
-			uv_mutex_unlock(&session->d_que_mutex);
+		uv_mutex_lock(&session->d_que_mutex);
+		// Keep the lock and release once the head is retrieved
+		const blpapi::Event& ev = session->d_que.front();
+		uv_mutex_unlock(&session->d_que_mutex);
 
-			rv->ForceSet(Local<String>::New(isolate, s_event_type),
-				eventTypeToString(isolate, ev.eventType()),
+		rv->ForceSet(Local<String>::New(isolate, s_event_type),
+			eventTypeToString(isolate, ev.eventType()),
+			(PropertyAttribute)(ReadOnly | DontDelete));
+
+		// Iterate over contained messages without holding lock
+		Local<Array> messages = Array::New(isolate);
+		int messageIndex = 0;
+		blpapi::MessageIterator msgIter(ev);
+		while (msgIter.next()) {
+			const blpapi::Message& msg = msgIter.message();
+
+			blpapi::Name messageType = msg.messageType();
+			Local<Object> message = Object::New(isolate);
+			message->ForceSet(Local<String>::New(isolate, s_message_type),
+				String::NewFromUtf8(isolate, messageType.string(), String::kNormalString, messageType.length()),
+				(PropertyAttribute)(ReadOnly | DontDelete));
+			message->ForceSet(Local<String>::New(isolate, s_topic_name),
+				String::NewFromUtf8(isolate, msg.topicName()),
 				(PropertyAttribute)(ReadOnly | DontDelete));
 
-			// Iterate over contained messages without holding lock
-			Local<Array> messages = Array::New(isolate);
-			int messageIndex = 0;
-			blpapi::MessageIterator msgIter(ev);
-			while (msgIter.next()) {
-				const blpapi::Message& msg = msgIter.message();
-				Local<Object> data = elementToValue(isolate, msg.asElement())->ToObject();
-				messages->Set(messageIndex, data);
-				++messageIndex;
+			Local<Array> correlations = Array::New(isolate, msg.numCorrelationIds());
+			for (int i = 0, j = 0; i < msg.numCorrelationIds(); ++i) {
+				blpapi::CorrelationId cid = msg.correlationId(i);
+				// Only pack user-specified integers and auto-generated
+				// values into the correlations array returned to the user.
+				if (cid.valueType() == blpapi::CorrelationId::INT_VALUE ||
+					cid.valueType() == blpapi::CorrelationId::AUTOGEN_VALUE) {
+					Local<Object> cido = Object::New(isolate);
+					cido->Set(Local<String>::New(isolate, s_value),
+						Integer::New(isolate, (int)cid.asInteger()));
+					cido->Set(Local<String>::New(isolate, s_class_id),
+						Integer::New(isolate, cid.classId()));
+					correlations->Set(j++, cido);
+				} else {
+					correlations->Set(j++, Object::New(isolate));
+				}
 			}
+			message->ForceSet(Local<String>::New(isolate, s_correlations),
+				correlations, (PropertyAttribute)(ReadOnly | DontDelete));
 
-			rv->ForceSet(
-				String::NewFromUtf8(isolate, "Messages"),
-				messages,
-				(PropertyAttribute)(ReadOnly | DontDelete)
-			);
+			Local<Object> data = elementToValue(isolate, msg.asElement())->ToObject();
+			message->ForceSet(String::NewFromUtf8(isolate, "data"),
+				elementToValue(isolate, msg.asElement()),
+				(PropertyAttribute)(ReadOnly | DontDelete));
 
-			uv_mutex_lock(&session->d_que_mutex);
-			session->d_que.pop_front();
-			uv_mutex_unlock(&session->d_que_mutex);
+			messages->Set(messageIndex, message);
+			++messageIndex;
 		}
+
+		rv->ForceSet(
+			String::NewFromUtf8(isolate, "messages"),
+			messages,
+			(PropertyAttribute)(ReadOnly | DontDelete)
+		);
+
+		uv_mutex_lock(&session->d_que_mutex);
+		session->d_que.pop_front();
+		uv_mutex_unlock(&session->d_que_mutex);
 
 		args.GetReturnValue().Set(scope.Escape(rv));
 		
@@ -594,8 +618,9 @@ Session::Start(const FunctionCallbackInfo<Value>& args)
     }
 
     BLPAPI_EXCEPTION_TRY
-    session->d_session->startAsync();
-    BLPAPI_EXCEPTION_CATCH_RETURN
+	// session->d_session->startAsync();
+	session->d_session->start();
+	BLPAPI_EXCEPTION_CATCH_RETURN
 
     session->d_session_ref.Reset(args.GetIsolate(), args.This());
     session->d_started = true;
@@ -835,8 +860,9 @@ Session::OpenService(const FunctionCallbackInfo<Value>& args)
     }
 
     BLPAPI_EXCEPTION_TRY
-    session->d_session->openServiceAsync(*uriv, cid);
-    BLPAPI_EXCEPTION_CATCH_RETURN
+	// session->d_session->openServiceAsync(*uriv, cid);
+	session->d_session->openService(*uriv);
+	BLPAPI_EXCEPTION_CATCH_RETURN
 
     args.GetReturnValue().Set(
         scope.Escape(Integer::New(args.GetIsolate(), cidi)));
@@ -1491,14 +1517,14 @@ Session::processEvent(const blpapi::Event& ev, blpapi::Session* session)
 {
     uv_mutex_lock(&d_que_mutex);
 
-    d_que.push_back(ev);
+	d_que.push_back(ev);
 
     uv_mutex_unlock(&d_que_mutex);
 
     s_async.data = this;
     uv_async_send(&s_async);
 
-    return true;
+	return true;
 }
 
 void
